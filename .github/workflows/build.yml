@@ -1,0 +1,294 @@
+###############################################################################
+# build.yml — Automated cross-compilation of the FOU kernel module for the
+# ASUS RT-AX68U running Asuswrt-Merlin firmware.
+#
+# Triggers:
+#   - Weekly cron schedule (Monday 06:00 UTC)
+#   - Manual workflow_dispatch
+#
+# The workflow checks for new upstream Merlin releases, cross-compiles fou.ko
+# using the Broadcom HND aarch64 toolchain, and publishes a GitHub Release
+# with the compiled module.
+###############################################################################
+
+name: Build FOU Module
+
+on:
+  schedule:
+    # Every Monday at 06:00 UTC
+    - cron: "0 6 * * 1"
+
+  workflow_dispatch:
+    inputs:
+      force_tag:
+        description: "Override upstream tag to build (leave empty for auto-detect)"
+        required: false
+        type: string
+
+permissions:
+  contents: write  # Required for creating releases
+
+env:
+  MERLIN_REPO: RMerl/asuswrt-merlin.ng
+  TOOLCHAINS_REPO: RMerl/am-toolchains
+  CROSS_COMPILE: aarch64-linux-
+  ARCH: arm64
+
+# Prevent concurrent builds
+concurrency:
+  group: build-fou-module
+  cancel-in-progress: false
+
+###############################################################################
+# Job 1: Check if a new upstream release exists
+###############################################################################
+jobs:
+  check-release:
+    name: Check Upstream Release
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+      upstream_tag: ${{ steps.check.outputs.upstream_tag }}
+
+    steps:
+      - name: Checkout own repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for new upstream tag
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # If a manual tag override is provided, use it directly
+          if [[ -n "${{ inputs.force_tag }}" ]]; then
+            echo "::notice::Using manually specified tag: ${{ inputs.force_tag }}"
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "upstream_tag=${{ inputs.force_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            bash scripts/check-upstream-tag.sh
+          fi
+
+      - name: Report decision
+        run: |
+          echo "### Release Check Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Upstream Tag | \`${{ steps.check.outputs.upstream_tag }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Should Build | \`${{ steps.check.outputs.should_build }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Trigger | \`${{ github.event_name }}\` |" >> "$GITHUB_STEP_SUMMARY"
+
+  ###############################################################################
+  # Job 2: Cross-compile the FOU kernel module
+  ###############################################################################
+  build:
+    name: Build FOU Module
+    needs: check-release
+    if: needs.check-release.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+
+    env:
+      UPSTREAM_TAG: ${{ needs.check-release.outputs.upstream_tag }}
+
+    steps:
+      # -----------------------------------------------------------------------
+      # Step 1: Install build dependencies
+      # -----------------------------------------------------------------------
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libncurses5-dev \
+            libncursesw5-dev \
+            bison \
+            flex \
+            gawk \
+            gettext \
+            libelf-dev \
+            libssl-dev \
+            bc \
+            u-boot-tools \
+            device-tree-compiler \
+            cpio \
+            rsync \
+            python3
+
+      # -----------------------------------------------------------------------
+      # Step 2: Checkout our repo (for scripts)
+      # -----------------------------------------------------------------------
+      - name: Checkout own repo
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # Step 3: Clone Asuswrt-Merlin source at the target tag
+      # -----------------------------------------------------------------------
+      - name: Clone Asuswrt-Merlin source
+        run: |
+          echo "::group::Cloning asuswrt-merlin.ng @ ${UPSTREAM_TAG}"
+          git clone \
+            --depth 1 \
+            --branch "${UPSTREAM_TAG}" \
+            --single-branch \
+            "https://github.com/${MERLIN_REPO}.git" \
+            asuswrt-merlin.ng
+          echo "::endgroup::"
+
+          echo "::notice::Cloned $(du -sh asuswrt-merlin.ng | cut -f1) of Merlin source"
+
+      # -----------------------------------------------------------------------
+      # Step 4: Clone am-toolchains
+      # -----------------------------------------------------------------------
+      - name: Clone am-toolchains
+        run: |
+          echo "::group::Cloning am-toolchains"
+          git clone \
+            --depth 1 \
+            "https://github.com/${TOOLCHAINS_REPO}.git" \
+            am-toolchains
+          echo "::endgroup::"
+
+          echo "::notice::Cloned $(du -sh am-toolchains | cut -f1) of toolchains"
+
+      # -----------------------------------------------------------------------
+      # Step 5: Setup toolchain
+      # -----------------------------------------------------------------------
+      - name: Setup cross-compilation toolchain
+        run: |
+          chmod +x scripts/setup-toolchain.sh
+          TOOLCHAINS_DIR="${GITHUB_WORKSPACE}/am-toolchains" \
+            bash scripts/setup-toolchain.sh
+
+      # -----------------------------------------------------------------------
+      # Step 6: Prepare kernel source
+      # -----------------------------------------------------------------------
+      - name: Prepare kernel source tree
+        run: |
+          chmod +x scripts/prepare-kernel.sh
+          MERLIN_SRC="${GITHUB_WORKSPACE}/asuswrt-merlin.ng" \
+            bash scripts/prepare-kernel.sh
+
+      # -----------------------------------------------------------------------
+      # Step 7: Build kernel modules
+      # -----------------------------------------------------------------------
+      - name: Build FOU kernel modules
+        run: |
+          chmod +x scripts/build-modules.sh
+          bash scripts/build-modules.sh
+
+      # -----------------------------------------------------------------------
+      # Step 8: Collect and strip artifacts
+      # -----------------------------------------------------------------------
+      - name: Collect build artifacts
+        run: |
+          chmod +x scripts/collect-artifacts.sh
+          ARTIFACTS_DIR="${GITHUB_WORKSPACE}/artifacts" \
+            bash scripts/collect-artifacts.sh
+
+      # -----------------------------------------------------------------------
+      # Step 9: Upload artifacts (for the release job)
+      # -----------------------------------------------------------------------
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fou-modules
+          path: artifacts/
+          retention-days: 5
+          if-no-files-found: error
+
+      # -----------------------------------------------------------------------
+      # Step 10: Build summary
+      # -----------------------------------------------------------------------
+      - name: Build summary
+        if: always()
+        run: |
+          echo "### Build Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ -f artifacts/build-info.txt ]]; then
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat artifacts/build-info.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Artifact | Size |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|------|" >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ -d artifacts ]]; then
+            for f in artifacts/*; do
+              if [[ -f "$f" ]]; then
+                echo "| \`$(basename "$f")\` | $(du -h "$f" | cut -f1) |" >> "$GITHUB_STEP_SUMMARY"
+              fi
+            done
+          fi
+
+  ###############################################################################
+  # Job 3: Create GitHub Release
+  ###############################################################################
+  release:
+    name: Create Release
+    needs: [check-release, build]
+    if: needs.check-release.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+
+    env:
+      UPSTREAM_TAG: ${{ needs.check-release.outputs.upstream_tag }}
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: fou-modules
+          path: artifacts/
+
+      - name: List downloaded artifacts
+        run: ls -lhR artifacts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "${{ env.UPSTREAM_TAG }}_fou_module"
+          name: "FOU Module for Merlin ${{ env.UPSTREAM_TAG }}"
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/*.ko
+            artifacts/build-info.txt
+          body: |
+            ## FOU Kernel Module for ASUS RT-AX68U
+
+            Automatically compiled `fou.ko` (Foo over UDP) kernel module for
+            [Asuswrt-Merlin](https://github.com/RMerl/asuswrt-merlin.ng)
+            firmware version **${{ env.UPSTREAM_TAG }}**.
+
+            ### Target Hardware
+            | Property | Value |
+            |----------|-------|
+            | Router | ASUS RT-AX68U |
+            | SoC | Broadcom BCM4906 (aarch64) |
+            | Platform | HND |
+            | Firmware | Asuswrt-Merlin ${{ env.UPSTREAM_TAG }} |
+
+            ### Installation
+            ```bash
+            # Copy to router
+            scp *.ko admin@<router_ip>:/jffs/modules/
+
+            # Load modules (SSH into router first)
+            insmod /jffs/modules/udp_tunnel.ko
+            insmod /jffs/modules/fou.ko
+
+            # Verify
+            lsmod | grep -E 'fou|udp_tunnel'
+            ```
+
+            ### ⚠️ Important
+            The module's `vermagic` must match your running kernel exactly.
+            Only use this release with Merlin firmware version **${{ env.UPSTREAM_TAG }}**.
+
+            ---
+            *Built automatically by [GitHub Actions](../../actions)*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

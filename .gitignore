@@ -1,0 +1,24 @@
+# Build artifacts
+artifacts/
+*.ko
+*.o
+*.mod
+*.mod.c
+*.cmd
+modules.order
+Module.symvers
+
+# Source checkouts (cloned during CI)
+asuswrt-merlin.ng/
+am-toolchains/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor artifacts
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
