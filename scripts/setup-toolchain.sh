@@ -15,9 +15,9 @@ readonly TOOLCHAINS_INSTALL="/opt/toolchains"
 # Helpers
 # ---------------------------------------------------------------------------
 
-log()  { echo "::notice::$*"; }
-warn() { echo "::warning::$*"; }
-err()  { echo "::error::$*"; >&2 echo "ERROR: $*"; }
+log()  { echo "::notice::$*"  >&2; }
+warn() { echo "::warning::$*" >&2; }
+err()  { echo "::error::$*"   >&2; }
 
 die() { err "$@"; exit 1; }
 
