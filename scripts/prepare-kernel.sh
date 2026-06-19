@@ -261,7 +261,7 @@ main() {
         ARCH="$ARCH"
         CROSS_COMPILE="$CROSS_COMPILE"
         KCONFIG_NOTIMESTAMP=1
-        V=1
+        BUILD_NAME=RT-AX68U
     )
 
     # Run olddefconfig — accepts all defaults non-interactively.

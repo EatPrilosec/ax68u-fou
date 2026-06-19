@@ -48,6 +48,7 @@ main() {
         ARCH="$ARCH" \
         CROSS_COMPILE="$CROSS_COMPILE" \
         KCONFIG_NOTIMESTAMP=1 \
+        BUILD_NAME=RT-AX68U \
         -j"$NPROC" \
         M=net/ipv4 \
         modules
