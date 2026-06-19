@@ -181,10 +181,12 @@ inject_config() {
     log "Injecting FOU kernel config options into $(basename "$config_file")"
 
     # BCM4906-specific mandatory symbols (chip ID, revision, scheduler params)
-    # silentoldconfig aborts if these are missing/empty with no default
+    # silentoldconfig aborts if these are missing/empty with no default.
+    # NOTE: BCM_CHIP_NUMBER and BRCM_CHIP_REV are Kconfig 'int' type — must be
+    #       decimal. 0x4906 decimal = 18694, 0x10 decimal = 16.
     local broadcom_configs=(
-        "CONFIG_BCM_CHIP_NUMBER=0x4906"
-        "CONFIG_BRCM_CHIP_REV=0x10"
+        "CONFIG_BCM_CHIP_NUMBER=18694"
+        "CONFIG_BRCM_CHIP_REV=16"
         "CONFIG_BCM_SCHED_RT_PERIOD=1000000"
         "CONFIG_BCM_SCHED_RT_RUNTIME=950000"
     )
