@@ -262,6 +262,7 @@ main() {
         CROSS_COMPILE="$CROSS_COMPILE"
         KCONFIG_NOTIMESTAMP=1
         BUILD_NAME=RT-AX68U
+        HOSTCC="gcc -fcommon"
     )
 
     # Run olddefconfig — accepts all defaults non-interactively.

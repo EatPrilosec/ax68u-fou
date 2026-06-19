@@ -49,6 +49,7 @@ main() {
         CROSS_COMPILE="$CROSS_COMPILE" \
         KCONFIG_NOTIMESTAMP=1 \
         BUILD_NAME=RT-AX68U \
+        HOSTCC="gcc -fcommon" \
         -j"$NPROC" \
         M=net/ipv4 \
         modules
