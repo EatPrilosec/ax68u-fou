@@ -266,14 +266,12 @@ main() {
     )
 
     # Run olddefconfig — accepts all defaults non-interactively.
-    # Pipe 'yes ""' as a safety net for any remaining mandatory prompts.
     log "Running: make olddefconfig"
-    yes "" | make "${make_flags[@]}" olddefconfig || make "${make_flags[@]}" olddefconfig
+    make "${make_flags[@]}" olddefconfig
 
     # modules_prepare builds scripts/ and generates include/config/auto.conf.
-    # Pipe 'yes ""' to handle any silentoldconfig prompts that remain.
     log "Running: make modules_prepare"
-    yes "" | make "${make_flags[@]}" modules_prepare
+    make "${make_flags[@]}" modules_prepare
 
     # Verify FOU is configured as a module
     if grep -q "CONFIG_NET_FOU=m" "${kernel_dir}/.config"; then
