@@ -182,11 +182,12 @@ inject_config() {
 
     # BCM4906-specific mandatory symbols (chip ID, revision, scheduler params)
     # silentoldconfig aborts if these are missing/empty with no default.
-    # NOTE: BCM_CHIP_NUMBER and BRCM_CHIP_REV are Kconfig 'int' type — must be
-    #       decimal. 0x4906 decimal = 18694, 0x10 decimal = 16.
+    # BCM_CHIP_NUMBER: Kconfig 'int'  — decimal 18694 (= 0x4906)
+    # BRCM_CHIP_REV:  Kconfig 'hex'  — 0x10 (hex type uses 0x prefix in .config)
+    # BCM_SCHED_RT_*: Kconfig 'int'  — decimal microseconds
     local broadcom_configs=(
         "CONFIG_BCM_CHIP_NUMBER=18694"
-        "CONFIG_BRCM_CHIP_REV=16"
+        "CONFIG_BRCM_CHIP_REV=0x10"
         "CONFIG_BCM_SCHED_RT_PERIOD=1000000"
         "CONFIG_BCM_SCHED_RT_RUNTIME=950000"
     )
@@ -234,47 +235,24 @@ main() {
     # Create Kconfig stubs before any make target that parses Kconfig
     create_kconfig_stubs "$src_rt_dir"
 
-    # Handle .config seeding
-    # Strategy: prefer a Broadcom-specific defconfig if one exists.
-    # Otherwise start from scratch — DO NOT use the generic ARM64 defconfig,
-    # as it contains values incompatible with this Broadcom kernel and causes
-    # '<command-line>:0:1: error: macro names must be identifiers' in bounds.s.
+    # Handle .config seeding.
+    # arch/arm64/configs/defconfig IS the Broadcom HND defconfig (only one exists).
+    # We use it as a base and overlay our mandatory BCM4906 chip values on top.
     if [[ -f "${kernel_dir}/.config" ]]; then
         log "Using existing .config"
     else
-        # Look for a Broadcom/BCM4906-specific defconfig only
-        local bcm_defconfig=""
-        local bcm_candidates=(
-            "${kernel_dir}/arch/${ARCH}/configs/bcm94906_defconfig"
-            "${kernel_dir}/arch/${ARCH}/configs/bcm_94906_defconfig"
-            "${kernel_dir}/arch/${ARCH}/configs/rt-ax68u_defconfig"
-            "${src_rt_dir}/targets/94906GW/94906GW"
-        )
-        for candidate in "${bcm_candidates[@]}"; do
-            if [[ -f "$candidate" ]]; then
-                bcm_defconfig="$candidate"
-                break
-            fi
-        done
-
-        # Broader BCM-specific search in targets/ only
-        if [[ -z "$bcm_defconfig" && -d "${src_rt_dir}/targets" ]]; then
-            bcm_defconfig=$(find "${src_rt_dir}/targets" -maxdepth 3 -type f \
-                \( -name '*4906*' -o -name '*94906*' \) 2>/dev/null | head -1)
-        fi
-
-        if [[ -n "$bcm_defconfig" ]]; then
-            log "Using BCM-specific defconfig: $(basename "$bcm_defconfig")"
-            cp "$bcm_defconfig" "${kernel_dir}/.config"
+        local base_defconfig="${kernel_dir}/arch/${ARCH}/configs/defconfig"
+        if [[ -f "$base_defconfig" ]]; then
+            log "Using kernel defconfig: arch/${ARCH}/configs/defconfig"
+            cp "$base_defconfig" "${kernel_dir}/.config"
         else
-            warn "No BCM-specific defconfig found — seeding minimal .config for BCM4906"
-            # Start with an empty .config; olddefconfig will fill all Kconfig defaults.
-            # We only pre-seed the mandatory prompts that have NO default values.
+            warn "No defconfig found — starting from empty .config"
             touch "${kernel_dir}/.config"
         fi
     fi
 
-    # Inject BCM4906 mandatory values + FOU module config
+    # Inject BCM4906 mandatory values + FOU module config.
+    # These values must come AFTER copying the defconfig so they take precedence.
     inject_config "${kernel_dir}/.config"
 
     # Common make flags for all kernel targets
@@ -285,14 +263,15 @@ main() {
         KCONFIG_NOTIMESTAMP=1
     )
 
-    # Run olddefconfig — accepts all defaults non-interactively
+    # Run olddefconfig — accepts all defaults non-interactively.
+    # Pipe 'yes ""' as a safety net for any remaining mandatory prompts.
     log "Running: make olddefconfig"
-    make "${make_flags[@]}" olddefconfig
+    yes "" | make "${make_flags[@]}" olddefconfig || make "${make_flags[@]}" olddefconfig
 
-    # modules_prepare builds scripts/ and generates include/config/auto.conf
-    # It is a superset of 'make scripts' for our purposes
+    # modules_prepare builds scripts/ and generates include/config/auto.conf.
+    # Pipe 'yes ""' to handle any silentoldconfig prompts that remain.
     log "Running: make modules_prepare"
-    make "${make_flags[@]}" modules_prepare
+    yes "" | make "${make_flags[@]}" modules_prepare
 
     # Verify FOU is configured as a module
     if grep -q "CONFIG_NET_FOU=m" "${kernel_dir}/.config"; then
