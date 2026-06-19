@@ -261,6 +261,7 @@ main() {
         ARCH="$ARCH"
         CROSS_COMPILE="$CROSS_COMPILE"
         KCONFIG_NOTIMESTAMP=1
+        V=1
     )
 
     # Run olddefconfig — accepts all defaults non-interactively.
