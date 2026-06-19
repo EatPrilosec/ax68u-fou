@@ -47,6 +47,7 @@ main() {
     make -C "$KERNEL_DIR" \
         ARCH="$ARCH" \
         CROSS_COMPILE="$CROSS_COMPILE" \
+        KCONFIG_NOTIMESTAMP=1 \
         -j"$NPROC" \
         M=net/ipv4 \
         modules

@@ -171,19 +171,34 @@ find_defconfig() {
     echo ""
 }
 
-# Inject FOU-related config options into the kernel .config
+# Inject FOU-related config options AND required Broadcom chip values.
+# BCM4906 chip ID is 0x4906 = 18694 decimal.
+# These mandatory Kconfig symbols have no defaults and would cause
+# silentoldconfig to abort with "aborted!" in non-interactive mode.
 inject_config() {
     local config_file="$1"
 
     log "Injecting FOU kernel config options into $(basename "$config_file")"
 
-    local configs=(
+    # BCM4906-specific mandatory symbols (chip ID, revision, scheduler params)
+    # silentoldconfig aborts if these are missing/empty with no default
+    local broadcom_configs=(
+        "CONFIG_BCM_CHIP_NUMBER=0x4906"
+        "CONFIG_BRCM_CHIP_REV=0x10"
+        "CONFIG_BCM_SCHED_RT_PERIOD=1000000"
+        "CONFIG_BCM_SCHED_RT_RUNTIME=950000"
+    )
+
+    # FOU module configs
+    local fou_configs=(
         "CONFIG_NET_FOU=m"
         "CONFIG_NET_UDP_TUNNEL=m"
         "CONFIG_INET_UDP_DIAG=m"
     )
 
-    for cfg in "${configs[@]}"; do
+    local all_configs=("${broadcom_configs[@]}" "${fou_configs[@]}")
+
+    for cfg in "${all_configs[@]}"; do
         local key="${cfg%%=*}"
         # Remove any existing setting for this key
         sed -i "/^${key}[= ]/d" "$config_file"
@@ -235,15 +250,22 @@ main() {
     # Inject FOU config options
     inject_config "${kernel_dir}/.config"
 
-    # Run kernel preparation targets
+    # Common make flags for all kernel targets
+    local make_flags=(
+        -C "$kernel_dir"
+        ARCH="$ARCH"
+        CROSS_COMPILE="$CROSS_COMPILE"
+        KCONFIG_NOTIMESTAMP=1
+    )
+
+    # Run olddefconfig — accepts all defaults non-interactively
     log "Running: make olddefconfig"
-    make -C "$kernel_dir" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" olddefconfig
+    make "${make_flags[@]}" olddefconfig
 
-    log "Running: make scripts"
-    make -C "$kernel_dir" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" scripts
-
+    # modules_prepare builds scripts/ and generates include/config/auto.conf
+    # It is a superset of 'make scripts' for our purposes
     log "Running: make modules_prepare"
-    make -C "$kernel_dir" ARCH="$ARCH" CROSS_COMPILE="$CROSS_COMPILE" modules_prepare
+    make "${make_flags[@]}" modules_prepare
 
     # Verify FOU is configured as a module
     if grep -q "CONFIG_NET_FOU=m" "${kernel_dir}/.config"; then
