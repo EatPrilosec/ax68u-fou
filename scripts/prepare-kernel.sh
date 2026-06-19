@@ -234,22 +234,47 @@ main() {
     # Create Kconfig stubs before any make target that parses Kconfig
     create_kconfig_stubs "$src_rt_dir"
 
-    # Handle defconfig / .config
-    local defconfig
-    defconfig=$(find_defconfig "$kernel_dir" "$src_rt_dir")
-
-    if [[ -n "$defconfig" && ! -f "${kernel_dir}/.config" ]]; then
-        log "Copying defconfig to .config: $(basename "$defconfig")"
-        cp "$defconfig" "${kernel_dir}/.config"
-    elif [[ -f "${kernel_dir}/.config" ]]; then
+    # Handle .config seeding
+    # Strategy: prefer a Broadcom-specific defconfig if one exists.
+    # Otherwise start from scratch — DO NOT use the generic ARM64 defconfig,
+    # as it contains values incompatible with this Broadcom kernel and causes
+    # '<command-line>:0:1: error: macro names must be identifiers' in bounds.s.
+    if [[ -f "${kernel_dir}/.config" ]]; then
         log "Using existing .config"
     else
-        warn "No defconfig found — will let olddefconfig generate a minimal config"
-        # Create a minimal .config so olddefconfig has something to start from
-        touch "${kernel_dir}/.config"
+        # Look for a Broadcom/BCM4906-specific defconfig only
+        local bcm_defconfig=""
+        local bcm_candidates=(
+            "${kernel_dir}/arch/${ARCH}/configs/bcm94906_defconfig"
+            "${kernel_dir}/arch/${ARCH}/configs/bcm_94906_defconfig"
+            "${kernel_dir}/arch/${ARCH}/configs/rt-ax68u_defconfig"
+            "${src_rt_dir}/targets/94906GW/94906GW"
+        )
+        for candidate in "${bcm_candidates[@]}"; do
+            if [[ -f "$candidate" ]]; then
+                bcm_defconfig="$candidate"
+                break
+            fi
+        done
+
+        # Broader BCM-specific search in targets/ only
+        if [[ -z "$bcm_defconfig" && -d "${src_rt_dir}/targets" ]]; then
+            bcm_defconfig=$(find "${src_rt_dir}/targets" -maxdepth 3 -type f \
+                \( -name '*4906*' -o -name '*94906*' \) 2>/dev/null | head -1)
+        fi
+
+        if [[ -n "$bcm_defconfig" ]]; then
+            log "Using BCM-specific defconfig: $(basename "$bcm_defconfig")"
+            cp "$bcm_defconfig" "${kernel_dir}/.config"
+        else
+            warn "No BCM-specific defconfig found — seeding minimal .config for BCM4906"
+            # Start with an empty .config; olddefconfig will fill all Kconfig defaults.
+            # We only pre-seed the mandatory prompts that have NO default values.
+            touch "${kernel_dir}/.config"
+        fi
     fi
 
-    # Inject FOU config options
+    # Inject BCM4906 mandatory values + FOU module config
     inject_config "${kernel_dir}/.config"
 
     # Common make flags for all kernel targets
