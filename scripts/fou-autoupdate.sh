@@ -70,9 +70,12 @@ update_and_load() {
             [ -f "${MODULE_DIR}/${CURRENT_FW}/udp_tunnel.ko" ] && insmod "${MODULE_DIR}/${CURRENT_FW}/udp_tunnel.ko" 2>/dev/null
             [ -f "${MODULE_DIR}/${CURRENT_FW}/fou.ko" ] && insmod "${MODULE_DIR}/${CURRENT_FW}/fou.ko" 2>/dev/null
             
-            # Load IPv6 dependencies (if present)
-            [ -f "${MODULE_DIR}/${CURRENT_FW}/ip6_udp_tunnel.ko" ] && insmod "${MODULE_DIR}/${CURRENT_FW}/ip6_udp_tunnel.ko" 2>/dev/null
-            [ -f "${MODULE_DIR}/${CURRENT_FW}/fou6.ko" ] && insmod "${MODULE_DIR}/${CURRENT_FW}/fou6.ko" 2>/dev/null
+            # Load IPv6 dependencies if IPv6 is enabled
+            IPV6_SERVICE=$(nvram get ipv6_service)
+            if [ -n "$IPV6_SERVICE" ] && [ "$IPV6_SERVICE" != "disabled" ]; then
+                [ -f "${MODULE_DIR}/${CURRENT_FW}/ip6_udp_tunnel.ko" ] && insmod "${MODULE_DIR}/${CURRENT_FW}/ip6_udp_tunnel.ko" 2>/dev/null
+                [ -f "${MODULE_DIR}/${CURRENT_FW}/fou6.ko" ] && insmod "${MODULE_DIR}/${CURRENT_FW}/fou6.ko" 2>/dev/null
+            fi
             
             echo "Loaded modules for firmware ${CURRENT_FW}."
         else
