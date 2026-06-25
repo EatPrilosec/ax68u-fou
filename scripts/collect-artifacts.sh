@@ -35,15 +35,13 @@ strip_module() {
     local strip_cmd="${CROSS_COMPILE}strip"
 
     if command -v "$strip_cmd" &>/dev/null; then
-        log "Stripping debug symbols: $(basename "$ko_file")"
-        local before_size
-        before_size=$(stat -c%s "$ko_file")
-
-        "$strip_cmd" --strip-debug "$ko_file"
-
-        local after_size
-        after_size=$(stat -c%s "$ko_file")
-        log "  ${before_size} → ${after_size} bytes ($(( (before_size - after_size) * 100 / before_size ))% reduction)"
+        log "Skipping debug stripping: manual strip can cause 'insmod: short read' on Asuswrt."
+        # local before_size
+        # before_size=$(stat -c%s "$ko_file")
+        # "$strip_cmd" --strip-debug "$ko_file"
+        # local after_size
+        # after_size=$(stat -c%s "$ko_file")
+        # log "  ${before_size} → ${after_size} bytes ($(( (before_size - after_size) * 100 / before_size ))% reduction)"
     else
         warn "Cross-strip not found ($strip_cmd) — skipping debug symbol stripping"
     fi
