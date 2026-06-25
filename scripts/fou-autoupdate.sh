@@ -31,10 +31,15 @@ install_updater() {
 }
 
 update_and_load() {
-    # Get current firmware version (e.g., 3004.388.7)
+    # Get current firmware version
     BUILDNO=$(nvram get buildno)
     EXTENDNO=$(nvram get extendno | cut -d'_' -f1)
-    CURRENT_FW="${BUILDNO}.${EXTENDNO}"
+    
+    if [ "$EXTENDNO" = "0" ]; then
+        CURRENT_FW="3004.${BUILDNO}"
+    else
+        CURRENT_FW="3004.${BUILDNO}_${EXTENDNO}"
+    fi
     
     # 1. Check for latest release on GitHub
     LATEST_RELEASE=$(curl -sL "https://api.github.com/repos/${REPO}/releases/latest")

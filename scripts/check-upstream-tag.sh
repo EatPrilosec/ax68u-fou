@@ -118,10 +118,11 @@ get_latest_upstream_tag() {
         return 1
     fi
 
-    # Filter for 3004.388.x tags and sort by version number
+    # Filter for 3004.388.x tags, exclude betas/alphas/rcs, and sort by version number
     local latest
     latest=$(echo "$all_tags" \
         | grep -E "$TAG_PATTERN" \
+        | grep -v -i -E "beta|alpha|rc" \
         | sort -t. -k1,1n -k2,2n -k3,3n \
         | tail -1 \
         | tr -d '[:space:]')
