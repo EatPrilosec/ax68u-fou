@@ -1,0 +1,90 @@
+#!/bin/sh
+# fou-autoupdate.sh
+# Autoupdater and loader for FOU modules.
+
+REPO="EatPrilosec/ax68u-fou"
+MODULE_DIR="/jffs/modules/fou"
+SCRIPT_PATH="/jffs/scripts/fou-autoupdate.sh"
+
+install_updater() {
+    echo "Installing FOU autoupdater..."
+    mkdir -p "$MODULE_DIR"
+    
+    # Schedule with cru to run every 3 hours
+    cru a fou_autoupdate "0 */3 * * * $SCRIPT_PATH"
+    
+    # Add to services-start if not present
+    if [ -f /jffs/scripts/services-start ]; then
+        if ! grep -q "fou-autoupdate.sh" /jffs/scripts/services-start; then
+            echo "$SCRIPT_PATH" >> /jffs/scripts/services-start
+        fi
+    else
+        echo "#!/bin/sh" > /jffs/scripts/services-start
+        echo "$SCRIPT_PATH" >> /jffs/scripts/services-start
+        chmod +x /jffs/scripts/services-start
+    fi
+    
+    echo "FOU autoupdater installed and scheduled."
+    
+    # Run the update logic once to fetch and load modules
+    update_and_load
+}
+
+update_and_load() {
+    # Get current firmware version (e.g., 3004.388.7)
+    BUILDNO=$(nvram get buildno)
+    EXTENDNO=$(nvram get extendno | cut -d'_' -f1)
+    CURRENT_FW="${BUILDNO}.${EXTENDNO}"
+    
+    # 1. Check for latest release on GitHub
+    LATEST_RELEASE=$(curl -sL "https://api.github.com/repos/${REPO}/releases/latest")
+    LATEST_TAG=$(echo "$LATEST_RELEASE" | grep '"tag_name":' | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
+    
+    if [ -n "$LATEST_TAG" ]; then
+        # Tag format is typically 3004.388.7_fou_module
+        LATEST_FW=${LATEST_TAG%_fou_module}
+        
+        # 2. Download if not already downloaded
+        if [ ! -d "${MODULE_DIR}/${LATEST_FW}" ]; then
+            echo "Downloading modules for ${LATEST_FW}..."
+            mkdir -p "${MODULE_DIR}/${LATEST_FW}"
+            
+            UDP_URL=$(echo "$LATEST_RELEASE" | grep '"browser_download_url":' | grep 'udp_tunnel.ko' | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
+            FOU_URL=$(echo "$LATEST_RELEASE" | grep '"browser_download_url":' | grep 'fou.ko' | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
+            
+            if [ -n "$UDP_URL" ] && [ -n "$FOU_URL" ]; then
+                curl -sL "$UDP_URL" -o "${MODULE_DIR}/${LATEST_FW}/udp_tunnel.ko"
+                curl -sL "$FOU_URL" -o "${MODULE_DIR}/${LATEST_FW}/fou.ko"
+                echo "Downloaded successfully."
+            else
+                echo "Failed to find asset URLs."
+                rm -rf "${MODULE_DIR}/${LATEST_FW}"
+            fi
+        fi
+    fi
+
+    # 3. Load modules for current FW if not already loaded
+    if ! lsmod | grep -q 'fou'; then
+        if [ -d "${MODULE_DIR}/${CURRENT_FW}" ]; then
+            insmod "${MODULE_DIR}/${CURRENT_FW}/udp_tunnel.ko" 2>/dev/null
+            insmod "${MODULE_DIR}/${CURRENT_FW}/fou.ko" 2>/dev/null
+            echo "Loaded modules for firmware ${CURRENT_FW}."
+        else
+            echo "Modules for current firmware ${CURRENT_FW} not found."
+        fi
+    fi
+    
+    # 4. Cleanup old versions, keep current, latest, and one backup (3 total)
+    if cd "$MODULE_DIR" 2>/dev/null; then
+        FOLDERS=$(ls -td */ 2>/dev/null | tail -n +4)
+        if [ -n "$FOLDERS" ]; then
+            echo "$FOLDERS" | xargs rm -rf
+        fi
+    fi
+}
+
+if [ "$1" = "install" ]; then
+    install_updater
+else
+    update_and_load
+fi

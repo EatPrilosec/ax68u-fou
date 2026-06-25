@@ -31,7 +31,20 @@ A GitHub Actions workflow runs weekly (and on manual trigger) to:
 - SSH access to the router
 - A USB drive formatted with ext4 (for persistent storage)
 
-### Installation
+### Automated Installation & Updates (Recommended)
+
+Run this single command over SSH on your router to install the autoupdater. It will automatically download the correct modules for your firmware, configure auto-loading on boot, schedule a job (`cru`) to check for updates every 3 hours, prepare modules for your next firmware upgrade, and keep one backup version:
+
+```bash
+curl -sL https://raw.githubusercontent.com/EatPrilosec/ax68u-fou/main/scripts/fou-autoupdate.sh -o /jffs/scripts/fou-autoupdate.sh && chmod +x /jffs/scripts/fou-autoupdate.sh && /jffs/scripts/fou-autoupdate.sh install
+```
+
+To verify they loaded successfully:
+```bash
+lsmod | grep -E 'fou|udp_tunnel'
+```
+
+### Manual Installation
 
 1. Download `fou.ko` and `udp_tunnel.ko` from the [Releases](../../releases) page matching your firmware version.
 
