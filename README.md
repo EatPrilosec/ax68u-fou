@@ -56,13 +56,8 @@ lsmod | grep -E 'fou|udp_tunnel'
 3. Load the modules (order matters):
    ```bash
    ssh admin@192.168.1.1
-   # IPv4 Modules
    insmod /jffs/modules/udp_tunnel.ko
    insmod /jffs/modules/fou.ko
-   
-   # IPv6 Modules (Optional)
-   insmod /jffs/modules/ip6_udp_tunnel.ko
-   insmod /jffs/modules/fou6.ko
    ```
 
 4. Verify they loaded:

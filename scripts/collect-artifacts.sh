@@ -108,12 +108,8 @@ EOF
    scp *.ko admin@<router_ip>:/jffs/modules/
 
 2. Load modules (order matters):
-   # IPv4
    insmod /jffs/modules/udp_tunnel.ko
    insmod /jffs/modules/fou.ko
-   # IPv6 (Optional)
-   insmod /jffs/modules/ip6_udp_tunnel.ko
-   insmod /jffs/modules/fou6.ko
 
 3. Verify:
    lsmod | grep -E 'fou|udp_tunnel'
