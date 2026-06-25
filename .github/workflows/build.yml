@@ -277,8 +277,12 @@ jobs:
             scp *.ko admin@<router_ip>:/jffs/modules/
 
             # Load modules (SSH into router first)
+            # IPv4
             insmod /jffs/modules/udp_tunnel.ko
             insmod /jffs/modules/fou.ko
+            # IPv6 (Optional)
+            insmod /jffs/modules/ip6_udp_tunnel.ko
+            insmod /jffs/modules/fou6.ko
 
             # Verify
             lsmod | grep -E 'fou|udp_tunnel'

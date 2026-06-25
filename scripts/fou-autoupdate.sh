@@ -54,25 +54,26 @@ update_and_load() {
             echo "Downloading modules for ${LATEST_FW}..."
             mkdir -p "${MODULE_DIR}/${LATEST_FW}"
             
-            UDP_URL=$(echo "$LATEST_RELEASE" | grep '"browser_download_url":' | grep 'udp_tunnel.ko' | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
-            FOU_URL=$(echo "$LATEST_RELEASE" | grep '"browser_download_url":' | grep 'fou.ko' | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
-            
-            if [ -n "$UDP_URL" ] && [ -n "$FOU_URL" ]; then
-                curl -sL "$UDP_URL" -o "${MODULE_DIR}/${LATEST_FW}/udp_tunnel.ko"
-                curl -sL "$FOU_URL" -o "${MODULE_DIR}/${LATEST_FW}/fou.ko"
-                echo "Downloaded successfully."
-            else
-                echo "Failed to find asset URLs."
-                rm -rf "${MODULE_DIR}/${LATEST_FW}"
-            fi
+            # Fetch all .ko files available in the release
+            echo "$LATEST_RELEASE" | grep '"browser_download_url":' | grep '\.ko"' | sed -E 's/.*"([^"]+)".*/\1/' | while read -r url; do
+                filename=$(basename "$url")
+                curl -sL "$url" -o "${MODULE_DIR}/${LATEST_FW}/${filename}"
+            done
+            echo "Downloaded modules successfully."
         fi
     fi
 
     # 3. Load modules for current FW if not already loaded
     if ! lsmod | grep -q 'fou'; then
         if [ -d "${MODULE_DIR}/${CURRENT_FW}" ]; then
-            insmod "${MODULE_DIR}/${CURRENT_FW}/udp_tunnel.ko" 2>/dev/null
-            insmod "${MODULE_DIR}/${CURRENT_FW}/fou.ko" 2>/dev/null
+            # Load IPv4 dependencies
+            [ -f "${MODULE_DIR}/${CURRENT_FW}/udp_tunnel.ko" ] && insmod "${MODULE_DIR}/${CURRENT_FW}/udp_tunnel.ko" 2>/dev/null
+            [ -f "${MODULE_DIR}/${CURRENT_FW}/fou.ko" ] && insmod "${MODULE_DIR}/${CURRENT_FW}/fou.ko" 2>/dev/null
+            
+            # Load IPv6 dependencies (if present)
+            [ -f "${MODULE_DIR}/${CURRENT_FW}/ip6_udp_tunnel.ko" ] && insmod "${MODULE_DIR}/${CURRENT_FW}/ip6_udp_tunnel.ko" 2>/dev/null
+            [ -f "${MODULE_DIR}/${CURRENT_FW}/fou6.ko" ] && insmod "${MODULE_DIR}/${CURRENT_FW}/fou6.ko" 2>/dev/null
+            
             echo "Loaded modules for firmware ${CURRENT_FW}."
         else
             echo "Modules for current firmware ${CURRENT_FW} not found."

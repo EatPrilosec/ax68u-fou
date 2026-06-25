@@ -46,18 +46,23 @@ lsmod | grep -E 'fou|udp_tunnel'
 
 ### Manual Installation
 
-1. Download `fou.ko` and `udp_tunnel.ko` from the [Releases](../../releases) page matching your firmware version.
+1. Download the `.ko` files from the [Releases](../../releases) page matching your firmware version.
 
 2. Copy the modules to your router via SCP:
    ```bash
-   scp fou.ko udp_tunnel.ko admin@192.168.1.1:/jffs/modules/
+   scp *.ko admin@192.168.1.1:/jffs/modules/
    ```
 
-3. Load the modules (order matters — `udp_tunnel` is a dependency):
+3. Load the modules (order matters):
    ```bash
    ssh admin@192.168.1.1
+   # IPv4 Modules
    insmod /jffs/modules/udp_tunnel.ko
    insmod /jffs/modules/fou.ko
+   
+   # IPv6 Modules (Optional)
+   insmod /jffs/modules/ip6_udp_tunnel.ko
+   insmod /jffs/modules/fou6.ko
    ```
 
 4. Verify they loaded:

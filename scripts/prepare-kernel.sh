@@ -197,6 +197,8 @@ inject_config() {
         "CONFIG_NET_FOU=m"
         "CONFIG_NET_UDP_TUNNEL=m"
         "CONFIG_INET_UDP_DIAG=m"
+        "CONFIG_IPV6_FOU=m"
+        "CONFIG_IPV6_FOU_TUNNEL=m"
     )
 
     local all_configs=("${broadcom_configs[@]}" "${fou_configs[@]}")
